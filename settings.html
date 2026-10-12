@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Claudes Games</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 16px;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(var(--glow1), 0.35), transparent 60%),
+        radial-gradient(ellipse at 80% 70%, rgba(var(--glow2), 0.4), transparent 60%),
+        radial-gradient(ellipse at 50% 50%, rgba(var(--glow3), 0.25), transparent 70%),
+        linear-gradient(160deg, #02040a 0%, var(--mid) 50%, #000000 100%);
+      transition: background 0.4s;
+    }
+
+    .back {
+      position: fixed;
+      top: 24px;
+      left: 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+
+    .back:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    h1 {
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      text-shadow: 0 0 20px rgba(var(--accent), 0.5);
+    }
+
+    .panel {
+      background: rgba(var(--panel), 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 24px;
+      width: min(100%, 420px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel h2 {
+      font-size: 1.1rem;
+      margin-bottom: 4px;
+    }
+
+    .panel p {
+      color: #c8d2ea;
+      font-size: 0.9rem;
+      margin-bottom: 18px;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .option:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .option[aria-pressed="true"] {
+      border-color: #fff;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    }
+  </style>
+  <script src="theme.js"></script>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Home</a>
+
+  <h1>SETTINGS</h1>
+
+  <div class="panel">
+    <h2>Ambience colour</h2>
+    <p>Changes the background on every page and the colour of the snake in Snake.</p>
+    <div class="options" id="options">
+      <button class="option" data-ambience="blue"><span class="swatch" style="background:#2a5bd7"></span>Blue</button>
+      <button class="option" data-ambience="red"><span class="swatch" style="background:#d22a36"></span>Red</button>
+      <button class="option" data-ambience="green"><span class="swatch" style="background:#22a352"></span>Green</button>
+      <button class="option" data-ambience="orange"><span class="swatch" style="background:#e07a14"></span>Orange</button>
+    </div>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.option');
+
+    function markSelected() {
+      const current = Ambience.get();
+      buttons.forEach(b => b.setAttribute('aria-pressed', b.dataset.ambience === current));
+    }
+
+    buttons.forEach(b => b.addEventListener('click', () => {
+      Ambience.set(b.dataset.ambience);
+      markSelected();
+    }));
+
+    markSelected();
+  </script>
+</body>
+</html>

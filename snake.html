@@ -25,9 +25,9 @@
       gap: 16px;
       padding: 16px;
       background:
-        radial-gradient(ellipse at 20% 30%, rgba(30, 80, 180, 0.35), transparent 60%),
-        radial-gradient(ellipse at 80% 70%, rgba(10, 40, 120, 0.4), transparent 60%),
-        linear-gradient(160deg, #02040a 0%, #071330 50%, #000000 100%);
+        radial-gradient(ellipse at 20% 30%, rgba(var(--glow1), 0.35), transparent 60%),
+        radial-gradient(ellipse at 80% 70%, rgba(var(--glow2), 0.4), transparent 60%),
+        linear-gradient(160deg, #02040a 0%, var(--mid) 50%, #000000 100%);
     }
 
     .back {
@@ -51,7 +51,7 @@
       font-weight: 900;
       letter-spacing: 0.15em;
       font-size: clamp(1.8rem, 5vw, 3rem);
-      text-shadow: 0 0 20px rgba(80, 140, 255, 0.5);
+      text-shadow: 0 0 20px rgba(var(--accent), 0.5);
     }
 
     .score {
@@ -66,7 +66,7 @@
       background: rgba(0, 0, 0, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 8px;
-      box-shadow: 0 0 40px rgba(30, 80, 180, 0.35);
+      box-shadow: 0 0 40px rgba(var(--glow1), 0.35);
     }
 
     .hint {
@@ -75,6 +75,7 @@
       text-align: center;
     }
   </style>
+  <script src="theme.js"></script>
 </head>
 <body>
   <a class="back" href="index.html">&larr; Home</a>
@@ -185,7 +186,8 @@
 
       // Snake
       snake.forEach((s, i) => {
-        ctx.fillStyle = i === 0 ? '#8fb8ff' : `hsl(220, 90%, ${68 - (i / snake.length) * 25}%)`;
+        const hue = Ambience.hue();
+        ctx.fillStyle = i === 0 ? `hsl(${hue}, 100%, 78%)` : `hsl(${hue}, 90%, ${68 - (i / snake.length) * 25}%)`;
         ctx.beginPath();
         ctx.roundRect(s.x * SIZE + 1, s.y * SIZE + 1, SIZE - 2, SIZE - 2, 5);
         ctx.fill();
