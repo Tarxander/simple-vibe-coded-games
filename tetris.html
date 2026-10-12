@@ -22,8 +22,14 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      justify-content: safe center;
       gap: 12px;
       padding: 16px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
       background:
         radial-gradient(ellipse at 20% 30%, rgba(var(--glow1), 0.35), transparent 60%),
         radial-gradient(ellipse at 80% 70%, rgba(var(--glow2), 0.4), transparent 60%),
@@ -113,6 +119,11 @@
       gap: 8px;
     }
 
+    .touch-group {
+      display: flex;
+      gap: 8px;
+    }
+
     .touch button {
       width: 56px;
       height: 48px;
@@ -121,20 +132,73 @@
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.25);
       border-radius: 8px;
-      touch-action: manipulation;
+      touch-action: none;
     }
 
-    @media (hover: none), (max-width: 600px) {
+    .touch button:active {
+      background: rgba(var(--accent), 0.35);
+    }
+
+    @media (hover: none), (pointer: coarse), (max-width: 600px) {
       .touch { display: flex; }
-      #board { height: min(58vh, 600px); }
+      #board { height: min(58vh, calc(100dvh - 260px), 600px); }
       .side { min-width: 90px; }
       #next { width: 70px; height: 70px; }
+      .back { top: 16px; }
+      h1 { line-height: 42px; }
+    }
+
+    /* Narrow phones: arrow-only Home button so it can't bump into the title */
+    @media (max-width: 420px) {
+      .back { padding: 10px 14px; }
+      .back-text { display: none; }
+      .touch, .touch-group { gap: 6px; }
+      .touch button { width: 42px; }
+    }
+
+    /* Short upright phones: drop the tip text so nothing scrolls */
+    @media (orientation: portrait) and (max-height: 640px) {
+      .hint { display: none; }
+    }
+
+    /* Phone held sideways: move buttons | board | stats + action buttons */
+    @media (orientation: landscape) and (max-height: 500px) and (hover: none), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+      body {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-rows: 1fr auto;
+        grid-template-areas: ".    board side" "move board act";
+        column-gap: 20px;
+        row-gap: 10px;
+        padding: 8px 16px;
+        height: 100dvh;
+      }
+      h1, .hint { display: none; }
+      .game, .touch { display: contents; }
+      #board { grid-area: board; height: calc(100dvh - 16px); }
+      .side {
+        grid-area: side;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 92px));
+        align-content: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .box { padding: 4px 8px; }
+      .value { font-size: 1.05rem; }
+      .box-next { grid-column: span 2; display: flex; align-items: center; gap: 8px; }
+      #next { width: 52px; height: 52px; margin-top: 0; }
+      .touch-move { grid-area: move; justify-self: end; align-self: end; }
+      .touch-act { grid-area: act; justify-self: start; align-self: end; display: grid; grid-template-columns: repeat(2, auto); }
+      .touch button { width: 58px; height: 52px; }
+      .back { top: 8px; padding: 10px 14px; }
+      .back-text { display: none; }
     }
   </style>
   <script src="theme.js"></script>
 </head>
 <body>
-  <a class="back" href="index.html">&larr; Home</a>
+  <a class="back" href="index.html" aria-label="Home">&larr;<span class="back-text"> Home</span></a>
 
   <h1>TETRIS</h1>
 
@@ -145,19 +209,24 @@
       <div class="box"><div class="label">BEST</div><div class="value" id="best">0</div></div>
       <div class="box"><div class="label">LINES</div><div class="value" id="lines">0</div></div>
       <div class="box"><div class="label">LEVEL</div><div class="value" id="level">1</div></div>
-      <div class="box"><div class="label">NEXT</div><canvas id="next" width="120" height="120"></canvas></div>
+      <div class="box box-next"><div class="label">NEXT</div><canvas id="next" width="120" height="120"></canvas></div>
     </div>
   </div>
 
   <div class="touch">
-    <button type="button" data-action="left" aria-label="Move left">&larr;</button>
-    <button type="button" data-action="rotate" aria-label="Rotate">&#8635;</button>
-    <button type="button" data-action="right" aria-label="Move right">&rarr;</button>
-    <button type="button" data-action="down" aria-label="Soft drop">&darr;</button>
-    <button type="button" data-action="drop" aria-label="Hard drop">&#10515;</button>
+    <div class="touch-group touch-move">
+      <button type="button" data-action="left" aria-label="Move left">&larr;</button>
+      <button type="button" data-action="right" aria-label="Move right">&rarr;</button>
+    </div>
+    <div class="touch-group touch-act">
+      <button type="button" data-action="rotate" aria-label="Rotate">&#8635;</button>
+      <button type="button" data-action="down" aria-label="Soft drop">&darr;</button>
+      <button type="button" data-action="drop" aria-label="Hard drop">&#10515;</button>
+      <button type="button" data-action="pause" aria-label="Pause">&#10074;&#10074;</button>
+    </div>
   </div>
 
-  <p class="hint" id="hint">Press any key or tap to start &middot; &larr; &rarr; move &middot; &uarr; rotate &middot; &darr; soft drop &middot; Space hard drop &middot; P pause</p>
+  <p class="hint" id="hint"></p>
 
   <script>
     const COLS = 10;
@@ -172,6 +241,12 @@
     const linesEl = document.getElementById('lines');
     const levelEl = document.getElementById('level');
     const hintEl = document.getElementById('hint');
+
+    const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+    const HINTS = isTouch
+      ? { start: 'Tap the board or a button to start', playing: 'Arrows move \u00b7 \u21bb or tap the board to rotate \u00b7 \u2193 soft drop \u00b7 \u2913 hard drop', paused: 'Paused \u00b7 tap \u275a\u275a to resume', over: 'Game over! Tap to play again' }
+      : { start: 'Press any key or click to start \u00b7 \u2190 \u2192 move \u00b7 \u2191 rotate \u00b7 \u2193 soft drop \u00b7 Space hard drop \u00b7 P pause', playing: '\u2190 \u2192 move \u00b7 \u2191 rotate \u00b7 \u2193 soft drop \u00b7 Space hard drop \u00b7 P pause', paused: 'Paused \u00b7 press P to resume', over: 'Game over! Press any key or click to play again' };
+    hintEl.textContent = HINTS.start;
 
     const PIECES = {
       I: { color: '#38d6f5', shape: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
@@ -318,7 +393,7 @@
       nextType = takeFromBag();
       spawn();
       state = 'playing';
-      hintEl.textContent = '← → move · ↑ rotate · ↓ soft drop · Space hard drop · P pause';
+      hintEl.textContent = HINTS.playing;
       dropTimer = 0;
       lastTime = performance.now();
     }
@@ -330,17 +405,17 @@
         bestEl.textContent = best;
         try { localStorage.setItem('tetrisBest', best); } catch (e) {}
       }
-      hintEl.textContent = 'Game over! Press any key or tap to play again';
+      hintEl.textContent = HINTS.over;
     }
 
     function togglePause() {
       if (state === 'playing') {
         state = 'paused';
-        hintEl.textContent = 'Paused · press P to resume';
+        hintEl.textContent = HINTS.paused;
       } else if (state === 'paused') {
         state = 'playing';
         lastTime = performance.now();
-        hintEl.textContent = '← → move · ↑ rotate · ↓ soft drop · Space hard drop · P pause';
+        hintEl.textContent = HINTS.playing;
       }
     }
 
@@ -457,8 +532,21 @@
       act(action);
     });
 
+    // Touch buttons act on press; holding move/soft-drop repeats like a keyboard
+    let repeatTimer = null;
+    function stopRepeat() { clearTimeout(repeatTimer); repeatTimer = null; }
     document.querySelectorAll('.touch button').forEach(b => {
-      b.addEventListener('click', () => act(b.dataset.action));
+      const action = b.dataset.action;
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        stopRepeat();
+        const wasPlaying = state === 'playing';
+        act(action);
+        if (!wasPlaying || !['left', 'right', 'down'].includes(action)) return;
+        const again = (delay) => { repeatTimer = setTimeout(() => { if (state !== 'playing') return; act(action); again(60); }, delay); };
+        again(180);
+      });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, stopRepeat);
     });
     board.addEventListener('click', () => {
       if (state === 'ready' || state === 'over') start();
