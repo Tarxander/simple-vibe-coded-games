@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doom - Claudes Games</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      justify-content: safe center;
+      gap: 12px;
+      padding: 16px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(var(--glow1), 0.35), transparent 60%),
+        radial-gradient(ellipse at 80% 70%, rgba(var(--glow2), 0.4), transparent 60%),
+        linear-gradient(160deg, #02040a 0%, var(--mid) 50%, #000000 100%);
+    }
+
+    .back {
+      position: fixed;
+      top: 24px;
+      left: 16px;
+      z-index: 5;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+
+    .back:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    h1 {
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      text-shadow: 0 0 20px rgba(var(--accent), 0.5);
+    }
+
+    .screen {
+      position: relative;
+      width: min(calc(100vw - 32px), calc((100dvh - 170px) * 1.6), 960px);
+      min-width: 280px;
+      aspect-ratio: 320 / 200;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(var(--glow1), 0.35);
+      cursor: crosshair;
+    }
+
+    .fire {
+      display: none;
+      position: absolute;
+      right: 4%;
+      bottom: 22%;
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      background: rgba(200, 30, 20, 0.45);
+      color: #fff;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      touch-action: none;
+    }
+
+    .fire:active {
+      background: rgba(255, 80, 40, 0.7);
+    }
+
+    .hint {
+      color: #c8d2ea;
+      font-size: 0.9rem;
+      text-align: center;
+      max-width: 640px;
+    }
+
+    @media (hover: none), (pointer: coarse) {
+      .fire { display: block; }
+    }
+
+    @media (max-width: 420px) {
+      .back { top: 16px; padding: 10px 14px; }
+      .back-text { display: none; }
+    }
+
+    /* Phone held sideways: give the game the whole screen */
+    @media (orientation: landscape) and (max-height: 500px) {
+      body { padding: 8px; }
+      h1, .hint { display: none; }
+      .screen { width: min(calc(100vw - 150px), calc((100dvh - 16px) * 1.6)); }
+      .back { top: 8px; left: 8px; padding: 10px 14px; }
+      .back-text { display: none; }
+    }
+  </style>
+  <script src="theme.js"></script>
+</head>
+<body>
+  <a class="back" href="index.html" aria-label="Home">&larr;<span class="back-text"> Home</span></a>
+
+  <h1>DOOM</h1>
+
+  <div class="screen" id="screen">
+    <canvas id="game" width="320" height="200"></canvas>
+    <button type="button" class="fire" id="fire" aria-label="Fire">FIRE</button>
+  </div>
+
+  <p class="hint" id="hint"></p>
+
+  <script>
+    // ================================================================
+    //  A small DOOM-style raycaster. All art is drawn in code at start.
+    // ================================================================
+
+    const W = 320, H = 200;       // internal resolution (scaled up, pixelated)
+    const VIEW_H = 168;           // 3D view height; the rest is the status bar
+    const TEX = 64;
+    const FOV_PLANE = 0.66;
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    const screenEl = document.getElementById('screen');
+    const fireBtn = document.getElementById('fire');
+    const hintEl = document.getElementById('hint');
+
+    const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+    hintEl.textContent = isTouch
+      ? 'Left side of the screen: drag to move · Right side: drag to turn · FIRE to shoot · Find the EXIT · Turn your phone sideways for a bigger screen'
+      : 'Click to play · WASD move · Mouse or ← → turn · Click / Space fire · Shift run · Find the EXIT';
+
+    // ---------------------------------------------------------------
+    //  Map: T tech wall, # brick, S stone, E exit switch,
+    //       P player start, i imp, h medikit, a shells
+    // ---------------------------------------------------------------
+    const MAP_SRC = [
+      'TTTTTTTTTTTTTTTTTTTTTTTT',
+      'T......T......T........T',
+      'T..P...T..i...T....a...T',
+      'T......T......T........T',
+      'T..h...........i.......T',
+      'T......T......T........T',
+      'TTTT.TTTTTTTTTTTTT.TTTTT',
+      '#......#.........#.....#',
+      '#..a...#....i....#..i..#',
+      '#..........SS..........#',
+      '#..i...#....h....#.....#',
+      '#......#.........#..a..#',
+      '####.######.##########.#',
+      '#.........#.....#......#',
+      '#..SSS....#..i..#..i...#',
+      '#..S.S.................#',
+      '#..SSS....#..a..#......#',
+      '#.i.......#.....#......#',
+      '#####.##########.#######',
+      '#......................#',
+      '#..i.......SSSS....i...#',
+      '#..........S..S........#',
+      '#..h.......SSSS...a....E',
+      '########################',
+    ];
+    const WALLS = 'T#SE';
+
+    let grid, player, enemies, pickups, fireballs, totalEnemies;
+
+    function isWall(x, y) {
+      const row = grid[Math.floor(y)];
+      if (!row) return true;
+      const c = row[Math.floor(x)];
+      return c === undefined || WALLS.includes(c);
+    }
+
+    function loadLevel() {
+      grid = MAP_SRC.map(r => r.split(''));
+      enemies = []; pickups = []; fireballs = [];
+      grid.forEach((row, y) => row.forEach((c, x) => {
+        const cx = x + 0.5, cy = y + 0.5;
+        if (c === 'P') player = newPlayer(cx, cy);
+        else if (c === 'i') enemies.push({ x: cx, y: cy, hp: 60, state: 'idle', timer: 0, cooldown: 1 + Math.random() * 2, walk: Math.random() * 4 });
+        else if (c === 'h') pickups.push({ x: cx, y: cy, kind: 'health' });
+        else if (c === 'a') pickups.push({ x: cx, y: cy, kind: 'ammo' });
+        else return;
+        row[x] = '.';
+      }));
+      totalEnemies = enemies.length;
+    }
+
+    function newPlayer(x, y) {
+      return { x, y, ang: 0, health: 100, ammo: 20, kills: 0, fireTimer: 0, bob: 0, hurt: 0, bonus: 0, dead: false };
+    }
+
+    // ---------------------------------------------------------------
+    //  Procedural textures & sprites
+    // ---------------------------------------------------------------
+    function rng(seed) {
+      return () => {
+        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function makeCanvas(draw, w = TEX, h = TEX) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      draw(g);
+      return c;
+    }
+
+    function noise(g, seed, amount) {
+      const r = rng(seed);
+      for (let y = 0; y < TEX; y++) {
+        for (let x = 0; x < TEX; x++) {
+          const v = r();
+          g.fillStyle = v < 0.5 ? `rgba(0,0,0,${(0.5 - v) * amount})` : `rgba(255,255,255,${(v - 0.5) * amount * 0.5})`;
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+
+    function techBase(g, seed) {
+      g.fillStyle = '#5c5f68';
+      g.fillRect(0, 0, TEX, TEX);
+      noise(g, seed, 0.35);
+      g.fillStyle = '#3a3c43';
+      g.fillRect(0, 0, TEX, 2); g.fillRect(0, 31, TEX, 2); g.fillRect(0, 62, TEX, 2);
+      g.fillRect(0, 0, 2, TEX); g.fillRect(62, 0, 2, TEX);
+      g.fillStyle = '#80848f';
+      g.fillRect(2, 2, 60, 1); g.fillRect(2, 33, 60, 1);
+      g.fillStyle = '#2b2d33';
+      for (const [x, y] of [[6, 6], [57, 6], [6, 26], [57, 26], [6, 37], [57, 37], [6, 57], [57, 57]]) g.fillRect(x, y, 2, 2);
+    }
+
+    const TEXTURES = {
+      T: makeCanvas(g => {
+        techBase(g, 7);
+        g.fillStyle = '#0f3d14'; g.fillRect(28, 6, 8, 52);
+        g.fillStyle = '#39e04a'; g.fillRect(30, 8, 4, 48);
+        g.fillStyle = '#b6ffbe'; g.fillRect(31, 8, 1, 48);
+      }),
+      '#': makeCanvas(g => {
+        g.fillStyle = '#6e3b25';
+        g.fillRect(0, 0, TEX, TEX);
+        noise(g, 3, 0.45);
+        g.fillStyle = '#2e1a10';
+        for (let row = 0; row < 4; row++) {
+          const y = row * 16;
+          g.fillRect(0, y, TEX, 2);
+          const off = row % 2 ? 16 : 0;
+          for (let x = off; x < TEX + 16; x += 32) g.fillRect(x % TEX, y, 2, 16);
+        }
+      }),
+      S: makeCanvas(g => {
+        g.fillStyle = '#56604f';
+        g.fillRect(0, 0, TEX, TEX);
+        noise(g, 11, 0.6);
+        const r = rng(5);
+        g.strokeStyle = 'rgba(20, 25, 18, 0.7)';
+        for (let i = 0; i < 6; i++) {
+          g.beginPath();
+          let x = r() * TEX, y = r() * TEX;
+          g.moveTo(x, y);
+          for (let k = 0; k < 4; k++) { x += (r() - 0.5) * 20; y += r() * 12; g.lineTo(x, y); }
+          g.stroke();
+        }
+      }),
+      E: makeCanvas(g => {
+        techBase(g, 13);
+        g.fillStyle = '#111'; g.fillRect(12, 8, 40, 16);
+        g.fillStyle = '#ff2a1a';
+        g.font = 'bold 13px Impact, "Arial Black", sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('EXIT', 32, 17);
+        g.fillStyle = '#222'; g.fillRect(26, 38, 12, 18);
+        g.fillStyle = '#d4d4d4'; g.fillRect(30, 40, 4, 10);
+        g.fillStyle = '#ff2a1a'; g.fillRect(29, 38, 6, 4);
+      }),
+    };
+
+    // Imp-style demon, several frames. Feet sit on the bottom row of the sprite.
+    function drawImp(g, frame) {
+      if (frame === 'dead') {
+        g.fillStyle = '#5a0a08'; g.beginPath(); g.ellipse(32, 60, 22, 4, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#7a4a2e'; g.beginPath(); g.ellipse(34, 57, 15, 5, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#6a3e26'; g.beginPath(); g.arc(17, 56, 5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#e8e0c8'; g.fillRect(28, 52, 2, 3); g.fillRect(38, 52, 2, 3);
+        g.fillStyle = '#b01010'; g.fillRect(24, 58, 6, 2); g.fillRect(40, 57, 5, 2);
+        return;
+      }
+      const skin = '#8a5634', dark = '#5e3820', spike = '#efe6cc';
+      const legShift = frame === 'walk2' ? 3 : 0;
+      // legs
+      g.fillStyle = dark;
+      g.fillRect(23 - legShift, 44, 6, 20);
+      g.fillRect(35 + legShift, 44, 6, 20);
+      g.fillStyle = '#2a1a10';
+      g.fillRect(21 - legShift, 61, 9, 3); g.fillRect(34 + legShift, 61, 9, 3);
+      // torso
+      g.fillStyle = skin; g.beginPath(); g.ellipse(32, 36, 12, 12, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = dark; g.fillRect(28, 30, 8, 14);
+      // arms
+      g.fillStyle = skin;
+      if (frame === 'attack') {
+        g.fillRect(16, 12, 5, 20); g.fillRect(43, 12, 5, 20);
+        g.fillStyle = '#ff9a1a'; g.beginPath(); g.arc(32, 7, 6, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#fff2a0'; g.beginPath(); g.arc(32, 7, 3, 0, Math.PI * 2); g.fill();
+      } else {
+        g.fillRect(16, 28, 5, 18); g.fillRect(43, 28, 5, 18);
+        g.fillStyle = spike; g.fillRect(15, 45, 2, 3); g.fillRect(19, 45, 2, 3); g.fillRect(43, 45, 2, 3); g.fillRect(47, 45, 2, 3);
+      }
+      // shoulder & head spikes
+      g.fillStyle = spike;
+      for (const [x, y] of [[19, 24], [43, 24], [26, 9], [36, 9]]) {
+        g.beginPath(); g.moveTo(x - 2, y + 4); g.lineTo(x, y - 2); g.lineTo(x + 2, y + 4); g.fill();
+      }
+      // head
+      g.fillStyle = skin; g.beginPath(); g.arc(32, 18, 8, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ff2020'; g.fillRect(28, 16, 3, 2); g.fillRect(34, 16, 3, 2);
+      g.fillStyle = '#1a0a05'; g.fillRect(29, 21, 7, frame === 'pain' || frame === 'attack' ? 4 : 2);
+      if (frame === 'pain') {
+        g.globalCompositeOperation = 'source-atop';
+        g.fillStyle = 'rgba(255, 0, 0, 0.45)'; g.fillRect(0, 0, TEX, TEX);
+        g.globalCompositeOperation = 'source-over';
+      }
+    }
+
+    const SPRITES = {};
+    for (const f of ['walk1', 'walk2', 'attack', 'pain', 'dead']) SPRITES['imp_' + f] = makeCanvas(g => drawImp(g, f));
+    SPRITES.health = makeCanvas(g => {
+      g.fillStyle = '#e8e8e8'; g.fillRect(20, 50, 24, 14);
+      g.fillStyle = '#9a9a9a'; g.fillRect(20, 62, 24, 2);
+      g.fillStyle = '#d01010'; g.fillRect(30, 52, 4, 10); g.fillRect(27, 55, 10, 4);
+    });
+    SPRITES.ammo = makeCanvas(g => {
+      g.fillStyle = '#8a1a10'; g.fillRect(18, 52, 28, 12);
+      g.fillStyle = '#5a0f08'; g.fillRect(18, 62, 28, 2);
+      g.fillStyle = '#e8c040';
+      for (let i = 0; i < 5; i++) g.fillRect(21 + i * 5, 46, 3, 7);
+      g.fillStyle = '#b06a10';
+      for (let i = 0; i < 5; i++) g.fillRect(21 + i * 5, 51, 3, 2);
+    });
+    SPRITES.fireball = makeCanvas(g => {
+      const grad = g.createRadialGradient(32, 32, 1, 32, 32, 10);
+      grad.addColorStop(0, '#fffbe0'); grad.addColorStop(0.4, '#ffb020'); grad.addColorStop(1, 'rgba(255, 60, 0, 0)');
+      g.fillStyle = grad; g.beginPath(); g.arc(32, 32, 10, 0, Math.PI * 2); g.fill();
+    });
+
+    // ---------------------------------------------------------------
+    //  Sound (synthesised, no files)
+    // ---------------------------------------------------------------
+    let audio = null;
+    function initAudio() {
+      if (audio) return;
+      try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
+    }
+
+    function noiseBurst(duration, freq, volume) {
+      if (!audio) return;
+      const len = Math.floor(audio.sampleRate * duration);
+      const buf = audio.createBuffer(1, len, audio.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+      const src = audio.createBufferSource(); src.buffer = buf;
+      const filter = audio.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = freq;
+      const gain = audio.createGain(); gain.gain.value = volume;
+      src.connect(filter).connect(gain).connect(audio.destination);
+      src.start();
+    }
+
+    function tone(from, to, duration, type, volume) {
+      if (!audio) return;
+      const o = audio.createOscillator(); o.type = type;
+      const gain = audio.createGain();
+      const t = audio.currentTime;
+      o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(to, t + duration);
+      gain.gain.setValueAtTime(volume, t); gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+      o.connect(gain).connect(audio.destination);
+      o.start(t); o.stop(t + duration);
+    }
+
+    const sfx = {
+      shotgun: () => { noiseBurst(0.35, 1800, 0.6); tone(120, 40, 0.2, 'square', 0.15); },
+      click:   () => tone(900, 600, 0.05, 'square', 0.08),
+      fireball:() => tone(300, 120, 0.4, 'sawtooth', 0.08),
+      impPain: () => tone(500, 250, 0.2, 'sawtooth', 0.1),
+      impDie:  () => tone(420, 60, 0.6, 'sawtooth', 0.14),
+      hurt:    () => { tone(180, 70, 0.25, 'square', 0.15); noiseBurst(0.15, 600, 0.3); },
+      pickup:  () => { tone(660, 990, 0.08, 'square', 0.08); },
+      win:     () => { tone(330, 660, 0.3, 'square', 0.1); setTimeout(() => tone(440, 880, 0.4, 'square', 0.1), 250); },
+    };
+
+    // ---------------------------------------------------------------
+    //  Input
+    // ---------------------------------------------------------------
+    const keys = {};
+    let firing = false;
+    let firePressed = false; // a quick tap/click still fires even if released before the next frame
+    let mouseTurn = 0;
+    const touch = { move: null, look: null, lookDx: 0 };
+
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+      keys[e.code] = true;
+      if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        if (state !== 'playing') { startGame(); return; }
+        if (!e.repeat) firePressed = true;
+        firing = true;
+      }
+      if (e.code === 'Enter' && state !== 'playing') startGame();
+    });
+    document.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+      if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') firing = false;
+    });
+    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; firing = false; });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (isTouch) return;
+      if (state !== 'playing') { startGame(); }
+      if (canvas.requestPointerLock && document.pointerLockElement !== canvas) {
+        try { canvas.requestPointerLock(); } catch (err) {}
+      }
+      if (e.button === 0 && state === 'playing') { firing = true; firePressed = true; }
+    });
+    document.addEventListener('mouseup', () => { if (!isTouch) firing = false; });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement === canvas) mouseTurn += e.movementX * 0.0025;
+    });
+
+    // Touch: left half of the game = move stick, right half = turn
+    function screenPoint(t) {
+      const r = screenEl.getBoundingClientRect();
+      return { x: (t.clientX - r.left) / r.width, y: (t.clientY - r.top) / r.height, px: t.clientX, py: t.clientY };
+    }
+    screenEl.addEventListener('touchstart', (e) => {
+      if (e.target === fireBtn) return;
+      e.preventDefault();
+      initAudio();
+      if (state !== 'playing') { startGame(); return; }
+      for (const t of e.changedTouches) {
+        const p = screenPoint(t);
+        if (p.x < 0.5 && !touch.move) touch.move = { id: t.identifier, ox: p.px, oy: p.py, dx: 0, dy: 0, sx: p.x, sy: p.y };
+        else if (p.x >= 0.5 && !touch.look) touch.look = { id: t.identifier, lx: p.px };
+      }
+    }, { passive: false });
+    screenEl.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (touch.move && t.identifier === touch.move.id) {
+          touch.move.dx = Math.max(-1, Math.min(1, (t.clientX - touch.move.ox) / 45));
+          touch.move.dy = Math.max(-1, Math.min(1, (t.clientY - touch.move.oy) / 45));
+        } else if (touch.look && t.identifier === touch.look.id) {
+          touch.lookDx += (t.clientX - touch.look.lx) * 0.012;
+          touch.look.lx = t.clientX;
+        }
+      }
+    }, { passive: false });
+    function endTouches(e) {
+      for (const t of e.changedTouches) {
+        if (touch.move && t.identifier === touch.move.id) touch.move = null;
+        if (touch.look && t.identifier === touch.look.id) touch.look = null;
+      }
+    }
+    screenEl.addEventListener('touchend', endTouches);
+    screenEl.addEventListener('touchcancel', endTouches);
+
+    fireBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      initAudio();
+      if (state !== 'playing') { startGame(); return; }
+      firing = true;
+      firePressed = true;
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(ev, () => { firing = false; });
+
+    // ---------------------------------------------------------------
+    //  Game logic
+    // ---------------------------------------------------------------
+    let state = 'title'; // title | playing | dead | won
+    let message = '', messageTimer = 0, levelTime = 0;
+
+    function say(text) { message = text; messageTimer = 3; }
+
+    function startGame() {
+      initAudio();
+      loadLevel();
+      state = 'playing';
+      levelTime = 0;
+      firing = false;
+      firePressed = false;
+      say('Kill the demons and find the EXIT switch!');
+    }
+
+    function moveWithCollision(obj, dx, dy, radius) {
+      const nx = obj.x + dx;
+      if (!isWall(nx + Math.sign(dx) * radius, obj.y - radius * 0.9) && !isWall(nx + Math.sign(dx) * radius, obj.y + radius * 0.9)) obj.x = nx;
+      const ny = obj.y + dy;
+      if (!isWall(obj.x - radius * 0.9, ny + Math.sign(dy) * radius) && !isWall(obj.x + radius * 0.9, ny + Math.sign(dy) * radius)) obj.y = ny;
+    }
+
+    function hasLineOfSight(ax, ay, bx, by) {
+      const d = Math.hypot(bx - ax, by - ay);
+      const steps = Math.ceil(d / 0.1);
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        if (isWall(ax + (bx - ax) * t, ay + (by - ay) * t)) return false;
+      }
+      return true;
+    }
+
+    // Distance to the first wall along an angle (for hitscan)
+    function castDistance(x, y, ang) {
+      const dx = Math.cos(ang), dy = Math.sin(ang);
+      for (let d = 0; d < 32; d += 0.05) {
+        if (isWall(x + dx * d, y + dy * d)) return d;
+      }
+      return 32;
+    }
+
+    function angleDiff(a, b) {
+      let d = a - b;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return d;
+    }
+
+    function fireShotgun() {
+      const p = player;
+      if (p.ammo <= 0) { sfx.click(); p.fireTimer = 0.35; say('Out of shells!'); return; }
+      p.ammo--;
+      p.fireTimer = 0.9;
+      sfx.shotgun();
+      // Wake nearby demons
+      enemies.forEach(e => { if (e.state === 'idle' && Math.hypot(e.x - p.x, e.y - p.y) < 9) e.state = 'chase'; });
+      for (let i = 0; i < 7; i++) {
+        const a = p.ang + (Math.random() - 0.5) * 0.18;
+        const wallDist = castDistance(p.x, p.y, a);
+        let best = null, bestDist = wallDist;
+        for (const e of enemies) {
+          if (e.state === 'dead') continue;
+          const d = Math.hypot(e.x - p.x, e.y - p.y);
+          if (d >= bestDist) continue;
+          const halfWidth = Math.atan(0.32 / d);
+          if (Math.abs(angleDiff(Math.atan2(e.y - p.y, e.x - p.x), a)) < halfWidth) { best = e; bestDist = d; }
+        }
+        if (best) damageEnemy(best, 5 + Math.floor(Math.random() * 11));
+      }
+    }
+
+    function damageEnemy(e, amount) {
+      if (e.state === 'dead') return;
+      e.hp -= amount;
+      if (e.hp <= 0) {
+        e.state = 'dead';
+        player.kills++;
+        sfx.impDie();
+        if (player.kills === totalEnemies) say('All demons destroyed! Now find the EXIT.');
+      } else {
+        if (e.state !== 'pain') sfx.impPain();
+        e.state = 'pain';
+        e.timer = 0.25;
+      }
+    }
+
+    function hurtPlayer(amount) {
+      if (player.dead) return;
+      player.health -= amount;
+      player.hurt = 0.4;
+      sfx.hurt();
+      if (player.health <= 0) {
+        player.health = 0;
+        player.dead = true;
+        state = 'dead';
+        firing = false;
+      }
+    }
+
+    function updatePlayer(dt) {
+      const p = player;
+      const run = keys.ShiftLeft || keys.ShiftRight ? 1.7 : 1;
+      let fwd = 0, strafe = 0, turn = 0;
+      if (keys.KeyW || keys.ArrowUp) fwd += 1;
+      if (keys.KeyS || keys.ArrowDown) fwd -= 1;
+      if (keys.KeyA) strafe -= 1;
+      if (keys.KeyD) strafe += 1;
+      if (keys.ArrowLeft || keys.KeyQ) turn -= 1;
+      if (keys.ArrowRight || keys.KeyE) turn += 1;
+      if (touch.move) { fwd -= touch.move.dy; strafe += touch.move.dx; }
+
+      p.ang += turn * 2.6 * dt + mouseTurn + touch.lookDx;
+      mouseTurn = 0; touch.lookDx = 0;
+
+      const speed = 3.2 * run * dt;
+      const len = Math.hypot(fwd, strafe);
+      if (len > 1) { fwd /= len; strafe /= len; }
+      const cos = Math.cos(p.ang), sin = Math.sin(p.ang);
+      const dx = (cos * fwd - sin * strafe) * speed;
+      const dy = (sin * fwd + cos * strafe) * speed;
+      moveWithCollision(p, dx, dy, 0.25);
+      if (len > 0.1) p.bob += dt * 9 * run;
+
+      if (p.fireTimer > 0) p.fireTimer -= dt;
+      if ((firing || firePressed) && p.fireTimer <= 0) { fireShotgun(); firePressed = false; }
+      if (p.hurt > 0) p.hurt -= dt;
+      if (p.bonus > 0) p.bonus -= dt;
+
+      // Pickups
+      pickups = pickups.filter(it => {
+        if (Math.hypot(it.x - p.x, it.y - p.y) > 0.55) return true;
+        if (it.kind === 'health') {
+          if (p.health >= 100) return true;
+          p.health = Math.min(100, p.health + 25);
+          say('Picked up a medikit.');
+        } else {
+          p.ammo = Math.min(50, p.ammo + 8);
+          say('Picked up a box of shotgun shells.');
+        }
+        p.bonus = 0.3;
+        sfx.pickup();
+        return false;
+      });
+
+      // Exit switch: walk into it
+      const cx = Math.floor(p.x), cy = Math.floor(p.y);
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (grid[cy + oy]?.[cx + ox] !== 'E') continue;
+          const nx = Math.max(cx + ox, Math.min(p.x, cx + ox + 1));
+          const ny = Math.max(cy + oy, Math.min(p.y, cy + oy + 1));
+          if (Math.hypot(p.x - nx, p.y - ny) < 0.4) { state = 'won'; firing = false; sfx.win(); }
+        }
+      }
+    }
+
+    function updateEnemies(dt) {
+      const p = player;
+      for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const dist = Math.hypot(p.x - e.x, p.y - e.y);
+        const sees = dist < 16 && hasLineOfSight(e.x, e.y, p.x, p.y);
+        if (e.state === 'idle') {
+          if (sees && dist < 11) e.state = 'chase';
+          continue;
+        }
+        if (e.state === 'pain' || e.state === 'attack') {
+          e.timer -= dt;
+          if (e.timer <= 0) e.state = 'chase';
+          continue;
+        }
+        // chase
+        e.cooldown -= dt;
+        if (sees && dist < 1.1 && e.cooldown <= 0) {
+          e.state = 'attack'; e.timer = 0.4; e.cooldown = 1.2;
+          hurtPlayer(3 + Math.floor(Math.random() * 10)); // claw
+          continue;
+        }
+        if (sees && dist < 10 && e.cooldown <= 0) {
+          e.state = 'attack'; e.timer = 0.5; e.cooldown = 1.6 + Math.random() * 2;
+          const a = Math.atan2(p.y - e.y, p.x - e.x);
+          fireballs.push({ x: e.x + Math.cos(a) * 0.4, y: e.y + Math.sin(a) * 0.4, vx: Math.cos(a) * 5, vy: Math.sin(a) * 5 });
+          sfx.fireball();
+          continue;
+        }
+        if (dist > 0.9) {
+          const a = Math.atan2(p.y - e.y, p.x - e.x);
+          moveWithCollision(e, Math.cos(a) * 1.7 * dt, Math.sin(a) * 1.7 * dt, 0.3);
+          e.walk += dt * 6;
+        }
+      }
+    }
+
+    function updateFireballs(dt) {
+      fireballs = fireballs.filter(f => {
+        f.x += f.vx * dt; f.y += f.vy * dt;
+        if (isWall(f.x, f.y)) return false;
+        if (Math.hypot(f.x - player.x, f.y - player.y) < 0.4) {
+          hurtPlayer(5 + Math.floor(Math.random() * 11));
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // ---------------------------------------------------------------
+    //  Rendering
+    // ---------------------------------------------------------------
+    const zbuf = new Float32Array(W);
+
+    function render() {
+      const p = player;
+      const dirX = Math.cos(p.ang), dirY = Math.sin(p.ang);
+      const planeX = -dirY * FOV_PLANE, planeY = dirX * FOV_PLANE;
+      const half = VIEW_H / 2;
+
+      // Ceiling & floor
+      let g = ctx.createLinearGradient(0, 0, 0, half);
+      g.addColorStop(0, '#3b3b3f'); g.addColorStop(1, '#111114');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, half);
+      g = ctx.createLinearGradient(0, half, 0, VIEW_H);
+      g.addColorStop(0, '#16110c'); g.addColorStop(1, '#5a4530');
+      ctx.fillStyle = g; ctx.fillRect(0, half, W, half);
+
+      // Walls (DDA raycasting)
+      for (let x = 0; x < W; x++) {
+        const camX = 2 * x / W - 1;
+        const rdx = dirX + planeX * camX, rdy = dirY + planeY * camX;
+        let mx = Math.floor(p.x), my = Math.floor(p.y);
+        const ddx = Math.abs(1 / rdx), ddy = Math.abs(1 / rdy);
+        const stepX = rdx < 0 ? -1 : 1, stepY = rdy < 0 ? -1 : 1;
+        let sdx = (rdx < 0 ? p.x - mx : mx + 1 - p.x) * ddx;
+        let sdy = (rdy < 0 ? p.y - my : my + 1 - p.y) * ddy;
+        let side = 0, cell = '#';
+        for (let i = 0; i < 64; i++) {
+          if (sdx < sdy) { sdx += ddx; mx += stepX; side = 0; }
+          else { sdy += ddy; my += stepY; side = 1; }
+          const c = grid[my]?.[mx];
+          if (c === undefined || WALLS.includes(c)) { cell = c || '#'; break; }
+        }
+        const perp = Math.max(0.0001, side === 0 ? sdx - ddx : sdy - ddy);
+        zbuf[x] = perp;
+        let wallX = side === 0 ? p.y + perp * rdy : p.x + perp * rdx;
+        wallX -= Math.floor(wallX);
+        let texX = Math.floor(wallX * TEX);
+        // y points down in this map, so these are the faces that would read mirrored
+        if ((side === 0 && rdx < 0) || (side === 1 && rdy > 0)) texX = TEX - 1 - texX;
+        const lineH = VIEW_H / perp;
+        const top = half - lineH / 2;
+        ctx.drawImage(TEXTURES[cell] || TEXTURES['#'], texX, 0, 1, TEX, x, top, 1, lineH);
+        const shade = Math.min(0.85, perp / 14) + (side ? 0.12 : 0);
+        if (shade > 0.02) {
+          ctx.fillStyle = `rgba(0,0,0,${shade})`;
+          ctx.fillRect(x, Math.max(0, top), 1, Math.min(VIEW_H, lineH));
+        }
+      }
+
+      // Sprites: demons, pickups, fireballs, sorted far to near
+      const sprites = [];
+      for (const e of enemies) {
+        let tex;
+        if (e.state === 'dead') tex = SPRITES.imp_dead;
+        else if (e.state === 'pain') tex = SPRITES.imp_pain;
+        else if (e.state === 'attack') tex = SPRITES.imp_attack;
+        else tex = Math.floor(e.walk) % 2 ? SPRITES.imp_walk2 : SPRITES.imp_walk1;
+        sprites.push({ x: e.x, y: e.y, tex });
+      }
+      for (const it of pickups) sprites.push({ x: it.x, y: it.y, tex: SPRITES[it.kind] });
+      for (const f of fireballs) sprites.push({ x: f.x, y: f.y, tex: SPRITES.fireball });
+      sprites.forEach(s => { s.d = (s.x - p.x) ** 2 + (s.y - p.y) ** 2; });
+      sprites.sort((a, b) => b.d - a.d);
+
+      const invDet = 1 / (planeX * dirY - dirX * planeY);
+      for (const s of sprites) {
+        const sx = s.x - p.x, sy = s.y - p.y;
+        const tx = invDet * (dirY * sx - dirX * sy);
+        const ty = invDet * (-planeY * sx + planeX * sy);
+        if (ty <= 0.1) continue;
+        const screenX = (W / 2) * (1 + tx / ty);
+        const size = VIEW_H / ty;
+        const top = half - size / 2;
+        const start = Math.max(0, Math.floor(screenX - size / 2));
+        const end = Math.min(W, Math.ceil(screenX + size / 2));
+        for (let x = start; x < end; x++) {
+          if (ty >= zbuf[x]) continue;
+          const texX = Math.floor((x - (screenX - size / 2)) * TEX / size);
+          if (texX < 0 || texX >= TEX) continue;
+          ctx.drawImage(s.tex, texX, 0, 1, TEX, x, top, 1, size);
+        }
+      }
+
+      drawWeapon();
+
+      // Damage / pickup flashes
+      if (p.hurt > 0) { ctx.fillStyle = `rgba(255, 0, 0, ${Math.min(0.45, p.hurt)})`; ctx.fillRect(0, 0, W, VIEW_H); }
+      if (p.bonus > 0) { ctx.fillStyle = `rgba(255, 220, 80, ${p.bonus * 0.6})`; ctx.fillRect(0, 0, W, VIEW_H); }
+      if (state === 'dead') { ctx.fillStyle = 'rgba(120, 0, 0, 0.5)'; ctx.fillRect(0, 0, W, VIEW_H); }
+
+      // Crosshair
+      if (state === 'playing') {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillRect(W / 2 - 3, half, 2, 1); ctx.fillRect(W / 2 + 2, half, 2, 1);
+        ctx.fillRect(W / 2, half - 3, 1, 2); ctx.fillRect(W / 2, half + 2, 1, 2);
+      }
+
+      // Touch move stick
+      if (touch.move) {
+        const r = screenEl.getBoundingClientRect();
+        const ox = touch.move.sx * W, oy = touch.move.sy * H;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(ox, oy, 45 * W / r.width, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath(); ctx.arc(ox + touch.move.dx * 45 * W / r.width, oy + touch.move.dy * 45 * W / r.width, 7, 0, Math.PI * 2); ctx.fill();
+      }
+
+      if (messageTimer > 0 && state === 'playing') {
+        ctx.font = '8px "Courier New", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#000'; ctx.fillText(message, 5, 11);
+        ctx.fillStyle = '#ff4a3a'; ctx.fillText(message, 4, 10);
+      }
+
+      drawStatusBar();
+    }
+
+    function drawWeapon() {
+      const p = player;
+      const moving = touch.move || keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD || keys.ArrowUp || keys.ArrowDown;
+      const bobX = moving ? Math.cos(p.bob) * 6 : 0;
+      const bobY = moving ? Math.abs(Math.sin(p.bob)) * 5 : 0;
+      // Recoil, then a pump
+      let kick = 0;
+      if (p.fireTimer > 0.6) kick = -6;
+      else if (p.fireTimer > 0.2) kick = Math.sin((0.6 - p.fireTimer) / 0.4 * Math.PI) * 14;
+      if (state === 'dead') kick = 60;
+      const cx = W / 2 + bobX;
+      const y = VIEW_H - 52 + bobY + kick;
+
+      if (p.fireTimer > 0.75 && p.ammo >= 0 && state === 'playing') {
+        ctx.fillStyle = '#ffdf6a';
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = i / 10 * Math.PI * 2, r = i % 2 ? 7 : 16;
+          ctx.lineTo(cx + Math.cos(a) * r, y - 4 + Math.sin(a) * r * 0.8);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#fff8d0'; ctx.beginPath(); ctx.arc(cx, y - 4, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      // barrels
+      ctx.fillStyle = '#2c2c2e'; ctx.fillRect(cx - 9, y, 18, 60);
+      ctx.fillStyle = '#56565a'; ctx.fillRect(cx - 7, y, 3, 60); ctx.fillRect(cx + 2, y, 3, 60);
+      ctx.fillStyle = '#0a0a0a'; ctx.fillRect(cx - 7, y + 1, 5, 3); ctx.fillRect(cx + 2, y + 1, 5, 3);
+      // pump grip
+      ctx.fillStyle = '#6b4423'; ctx.fillRect(cx - 12, y + 20, 24, 14);
+      ctx.fillStyle = '#4a2e17'; for (let i = 0; i < 4; i++) ctx.fillRect(cx - 12, y + 22 + i * 3, 24, 1);
+      // hands
+      ctx.fillStyle = '#c48a5a';
+      ctx.fillRect(cx - 20, y + 26, 10, 22); ctx.fillRect(cx + 10, y + 34, 12, 20);
+      ctx.fillStyle = '#9a6640';
+      ctx.fillRect(cx - 20, y + 30, 10, 1); ctx.fillRect(cx - 20, y + 35, 10, 1);
+    }
+
+    function hudNumber(text, x, y) {
+      ctx.font = 'bold 15px Impact, "Arial Black", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#300'; ctx.fillText(text, x + 1, y + 1);
+      ctx.fillStyle = '#d81e10'; ctx.fillText(text, x, y);
+    }
+
+    function hudLabel(text, x, y) {
+      ctx.font = 'bold 6px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ddd'; ctx.fillText(text, x, y);
+    }
+
+    function drawStatusBar() {
+      const p = player, y = VIEW_H;
+      ctx.fillStyle = '#5b5b5b'; ctx.fillRect(0, y, W, H - y);
+      ctx.fillStyle = '#8a8a8a'; ctx.fillRect(0, y, W, 1);
+      ctx.fillStyle = '#333'; ctx.fillRect(0, y + 1, W, 1);
+      for (const x of [70, 140, 180, 250]) { ctx.fillStyle = '#333'; ctx.fillRect(x, y + 2, 1, 30); ctx.fillStyle = '#7a7a7a'; ctx.fillRect(x + 1, y + 2, 1, 30); }
+
+      hudNumber(String(p.ammo), 35, y + 21); hudLabel('AMMO', 35, y + 29);
+      hudNumber(p.health + '%', 105, y + 21); hudLabel('HEALTH', 105, y + 29);
+      hudNumber(`${p.kills}/${totalEnemies}`, 215, y + 21); hudLabel('KILLS', 215, y + 29);
+      hudNumber(String(Math.floor(levelTime)), 285, y + 21); hudLabel('TIME', 285, y + 29);
+
+      drawFace(160, y + 16);
+    }
+
+    function drawFace(cx, cy) {
+      const p = player;
+      ctx.fillStyle = '#2a2a2a'; ctx.fillRect(cx - 18, cy - 14, 36, 29);
+      ctx.fillStyle = '#c8905c'; ctx.beginPath(); ctx.ellipse(cx, cy + 1, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#6b4a20'; ctx.fillRect(cx - 10, cy - 11, 20, 5);
+      if (p.dead) {
+        ctx.fillStyle = '#300';
+        for (const ex of [-5, 5]) { ctx.fillRect(cx + ex - 2, cy - 3, 4, 1); ctx.fillRect(cx + ex - 1, cy - 4, 2, 3); }
+        ctx.fillRect(cx - 4, cy + 6, 8, 2);
+      } else {
+        const glance = state === 'playing' ? Math.round(Math.sin(performance.now() / 900) * 1.2) : 0;
+        ctx.fillStyle = '#fff'; ctx.fillRect(cx - 7, cy - 3, 5, 3); ctx.fillRect(cx + 2, cy - 3, 5, 3);
+        ctx.fillStyle = '#204a9a'; ctx.fillRect(cx - 5 + glance, cy - 3, 2, 3); ctx.fillRect(cx + 4 + glance, cy - 3, 2, 3);
+        ctx.fillStyle = '#5a2a10';
+        if (p.hurt > 0) ctx.fillRect(cx - 4, cy + 5, 8, 4);          // ouch
+        else if (p.fireTimer > 0.6) { ctx.fillRect(cx - 5, cy + 5, 10, 2); ctx.fillStyle = '#fff'; ctx.fillRect(cx - 4, cy + 5, 8, 1); } // grin
+        else ctx.fillRect(cx - 4, cy + 6, 8, 1);
+      }
+      // blood as health drops
+      ctx.fillStyle = '#b00';
+      if (p.health < 80) ctx.fillRect(cx + 5, cy - 8, 2, 6);
+      if (p.health < 60) ctx.fillRect(cx - 8, cy + 1, 2, 7);
+      if (p.health < 40) { ctx.fillRect(cx - 2, cy - 9, 3, 5); ctx.fillRect(cx + 6, cy + 4, 2, 6); }
+      if (p.health < 20) { ctx.fillRect(cx - 9, cy - 7, 3, 4); ctx.fillRect(cx + 2, cy + 8, 4, 3); }
+    }
+
+    function drawOverlay(title, lines) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(0, 0, W, VIEW_H);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 30px Impact, "Arial Black", sans-serif';
+      ctx.fillStyle = '#400'; ctx.fillText(title, W / 2 + 2, 66);
+      ctx.fillStyle = '#e02010'; ctx.fillText(title, W / 2, 64);
+      ctx.font = '9px "Courier New", monospace';
+      ctx.fillStyle = '#eee';
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, 90 + i * 13));
+    }
+
+    // ---------------------------------------------------------------
+    //  Main loop
+    // ---------------------------------------------------------------
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (state === 'playing') {
+        levelTime += dt;
+        if (messageTimer > 0) messageTimer -= dt;
+        updatePlayer(dt);
+        if (state === 'playing') updateEnemies(dt);
+        updateFireballs(dt);
+      } else {
+        if (player.hurt > 0) player.hurt -= dt;
+        mouseTurn = 0; touch.lookDx = 0;
+      }
+      render();
+      const tap = isTouch ? 'TAP' : 'CLICK';
+      if (state === 'title') drawOverlay('DOOM', [`${tap} TO PLAY`, 'Kill the demons. Find the EXIT.']);
+      else if (state === 'dead') drawOverlay('YOU DIED', [`Kills: ${player.kills}/${totalEnemies}`, `${tap} TO TRY AGAIN`]);
+      else if (state === 'won') drawOverlay('LEVEL COMPLETE', [`Kills: ${player.kills}/${totalEnemies}   Time: ${Math.floor(levelTime)}s`, `${tap} TO PLAY AGAIN`]);
+      requestAnimationFrame(frame);
+    }
+
+    loadLevel();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
