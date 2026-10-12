@@ -22,8 +22,16 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 16px;
+      justify-content: safe center;
+      gap: 12px;
       padding: 16px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      /* The whole page is the swipe area: no scrolling, zooming or pull-to-refresh */
+      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
       background:
         radial-gradient(ellipse at 20% 30%, rgba(var(--glow1), 0.35), transparent 60%),
         radial-gradient(ellipse at 80% 70%, rgba(var(--glow2), 0.4), transparent 60%),
@@ -47,6 +55,13 @@
       background: rgba(255, 255, 255, 0.16);
     }
 
+    .info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
     h1 {
       font-weight: 900;
       letter-spacing: 0.15em;
@@ -61,6 +76,8 @@
 
     canvas {
       width: min(90vw, 70vh, 480px);
+      width: min(92vw, calc(100dvh - 300px), 480px);
+      min-width: 200px;
       height: auto;
       aspect-ratio: 1;
       background: rgba(0, 0, 0, 0.45);
@@ -74,16 +91,81 @@
       font-size: 0.95rem;
       text-align: center;
     }
+
+    /* On-screen arrow pad, shown on touch screens */
+    .dpad {
+      display: none;
+      grid-template-columns: repeat(3, 52px);
+      grid-template-rows: repeat(3, 48px);
+      gap: 6px;
+    }
+
+    .dpad button {
+      font-size: 1.4rem;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 10px;
+      touch-action: none;
+    }
+
+    .dpad button:active {
+      background: rgba(var(--accent), 0.35);
+    }
+
+    .dpad .up    { grid-area: 1 / 2; }
+    .dpad .left  { grid-area: 2 / 1; }
+    .dpad .right { grid-area: 2 / 3; }
+    .dpad .down  { grid-area: 3 / 2; }
+
+    @media (hover: none), (pointer: coarse), (max-width: 600px) {
+      .dpad { display: grid; }
+      h1 { font-size: 1.8rem; line-height: 42px; }
+      .hint { font-size: 0.85rem; }
+      .back { top: 16px; }
+    }
+
+    /* Narrow phones: arrow-only Home button so it can't bump into the title */
+    @media (max-width: 420px) {
+      .back { padding: 10px 14px; }
+      .back-text { display: none; }
+    }
+
+    /* Phone held sideways: board on the left, title/score/arrows on the right */
+    @media (orientation: landscape) and (max-height: 500px) {
+      body {
+        display: grid;
+        grid-template-columns: auto auto;
+        grid-template-areas: "board info" "board dpad";
+        justify-content: center;
+        align-content: center;
+        column-gap: 32px;
+        row-gap: 12px;
+        padding-left: 140px;
+      }
+      canvas { grid-area: board; width: calc(100dvh - 32px); min-width: 0; }
+      .info { grid-area: info; align-self: end; }
+      .dpad { grid-area: dpad; align-self: start; justify-self: center; }
+      .hint { display: none; }
+    }
   </style>
   <script src="theme.js"></script>
 </head>
 <body>
-  <a class="back" href="index.html">&larr; Home</a>
+  <a class="back" href="index.html" aria-label="Home">&larr;<span class="back-text"> Home</span></a>
 
-  <h1>SNAKE</h1>
-  <div class="score">Score: <span id="score">0</span> &nbsp;|&nbsp; Best: <span id="best">0</span></div>
+  <div class="info">
+    <h1>SNAKE</h1>
+    <div class="score">Score: <span id="score">0</span> &nbsp;|&nbsp; Best: <span id="best">0</span></div>
+  </div>
   <canvas id="game" width="400" height="400"></canvas>
-  <p class="hint" id="hint">Press an arrow key, WASD, or swipe to start</p>
+  <div class="dpad">
+    <button type="button" class="up" data-dir="0,-1" aria-label="Up">&uarr;</button>
+    <button type="button" class="left" data-dir="-1,0" aria-label="Left">&larr;</button>
+    <button type="button" class="right" data-dir="1,0" aria-label="Right">&rarr;</button>
+    <button type="button" class="down" data-dir="0,1" aria-label="Down">&darr;</button>
+  </div>
+  <p class="hint" id="hint"></p>
 
   <script>
     const canvas = document.getElementById('game');
@@ -91,6 +173,12 @@
     const scoreEl = document.getElementById('score');
     const bestEl = document.getElementById('best');
     const hintEl = document.getElementById('hint');
+
+    const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+    const HINTS = isTouch
+      ? { start: 'Swipe anywhere or use the arrows to start', playing: 'Swipe or use the arrows to steer', over: 'Game over! Swipe, tap or use the arrows to play again' }
+      : { start: 'Press an arrow key or WASD to start', playing: 'Arrow keys / WASD to steer', over: 'Game over! Press any arrow key or WASD to play again' };
+    hintEl.textContent = HINTS.start;
 
     const CELLS = 20;
     const SIZE = canvas.width / CELLS;
@@ -164,7 +252,7 @@
         try { localStorage.setItem('snakeBest', best); } catch (e) {}
       }
       draw();
-      hintEl.textContent = 'Game over! Press any arrow key, WASD, or tap to play again';
+      hintEl.textContent = HINTS.over;
     }
 
     function draw() {
@@ -215,7 +303,7 @@
       nextDir = { x, y };
       if (!running) {
         running = true;
-        hintEl.textContent = 'Arrow keys / WASD / swipe to steer';
+        hintEl.textContent = HINTS.playing;
         timer = setInterval(step, SPEED_MS);
       }
     }
@@ -234,13 +322,22 @@
       turn(k[0], k[1]);
     });
 
-    // Touch: swipe to steer, tap to restart
+    // On-screen arrows: react on press, not release, so turns feel instant
+    document.querySelectorAll('.dpad button').forEach(b => {
+      const [x, y] = b.dataset.dir.split(',').map(Number);
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        turn(x, y);
+      });
+    });
+
+    // Touch: swipe anywhere to steer, tap to restart
     let touchStart = null;
-    canvas.addEventListener('touchstart', (e) => {
+    document.addEventListener('touchstart', (e) => {
+      if (e.target.closest('.dpad, a')) return;
       touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      e.preventDefault();
-    }, { passive: false });
-    canvas.addEventListener('touchend', (e) => {
+    });
+    document.addEventListener('touchend', (e) => {
       if (!touchStart) return;
       const dx = e.changedTouches[0].clientX - touchStart.x;
       const dy = e.changedTouches[0].clientY - touchStart.y;
