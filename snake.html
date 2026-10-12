@@ -95,6 +95,10 @@
     const SIZE = canvas.width / CELLS;
     const SPEED_MS = 110;
 
+    const appleImg = new Image();
+    appleImg.src = 'apple.png';
+    appleImg.onload = () => draw();
+
     let best = 0;
     try { best = Number(localStorage.getItem('snakeBest')) || 0; } catch (e) {}
     bestEl.textContent = best;
@@ -174,14 +178,10 @@
         ctx.stroke();
       }
 
-      // Food
-      ctx.fillStyle = '#D97757';
-      ctx.shadowColor = '#D97757';
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(food.x * SIZE + SIZE / 2, food.y * SIZE + SIZE / 2, SIZE / 2.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      // Food (apple)
+      if (appleImg.complete && appleImg.naturalWidth) {
+        ctx.drawImage(appleImg, food.x * SIZE, food.y * SIZE, SIZE, SIZE);
+      }
 
       // Snake
       snake.forEach((s, i) => {
